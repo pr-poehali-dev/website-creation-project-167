@@ -90,6 +90,10 @@ export default function SettingsPage({ setPage }: SettingsPageProps) {
             <span className="font-medium">@{user.login}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-border">
+            <span className="text-muted-foreground">Email</span>
+            <span className="font-medium truncate max-w-40">{user.email || '—'}</span>
+          </div>
+          <div className="flex justify-between py-2 border-b border-border">
             <span className="text-muted-foreground">Имя</span>
             <span className="font-medium">{user.name}</span>
           </div>

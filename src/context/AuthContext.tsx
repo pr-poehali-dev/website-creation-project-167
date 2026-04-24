@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 export interface User {
   id: string;
   login: string;
+  email: string;
   name: string;
   avatar: string;
   bio: string;
@@ -25,6 +26,7 @@ export interface Video {
   createdAt: string;
   duration: string;
   category: string;
+  subtitles?: string;
 }
 
 export interface Comment {
@@ -48,7 +50,8 @@ interface AuthContextType {
   subscriptions: string[];
   reactions: Record<string, 'like' | 'dislike' | null>;
   login: (loginVal: string, password: string) => boolean;
-  register: (loginVal: string, name: string, password: string) => boolean;
+  register: (loginVal: string, email: string, name: string, password: string) => boolean;
+  switchAccount: (userId: string, password: string) => boolean;
   logout: () => void;
   updateProfile: (data: Partial<User>) => void;
   uploadVideo: (video: Omit<Video, 'id' | 'authorId' | 'authorName' | 'authorAvatar' | 'views' | 'likes' | 'dislikes' | 'createdAt'>) => void;
@@ -116,17 +119,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { save(STORAGE_KEYS.reactions, reactions); }, [reactions]);
 
   const login = (loginVal: string, password: string): boolean => {
-    const found = users.find(u => u.login === loginVal);
+    const found = users.find(u => u.login === loginVal || u.email === loginVal);
     if (!found || passwords[found.id] !== password) return false;
     setUser(found);
     return true;
   };
 
-  const register = (loginVal: string, name: string, password: string): boolean => {
-    if (users.find(u => u.login === loginVal)) return false;
+  const register = (loginVal: string, email: string, name: string, password: string): boolean => {
+    if (users.find(u => u.login === loginVal || u.email === email)) return false;
     const newUser: User = {
       id: Date.now().toString(),
       login: loginVal,
+      email,
       name,
       avatar: '',
       bio: '',
@@ -136,6 +140,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsers(prev => [...prev, newUser]);
     setPasswords(prev => ({ ...prev, [newUser.id]: password }));
     setUser(newUser);
+    return true;
+  };
+
+  const switchAccount = (userId: string, password: string): boolean => {
+    const found = users.find(u => u.id === userId);
+    if (!found || passwords[found.id] !== password) return false;
+    setUser(found);
+    setHistory([]);
+    setFavorites([]);
+    setSubscriptions([]);
+    setReactions({});
     return true;
   };
 
@@ -252,7 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, users, videos, comments, theme, history, favorites, subscriptions, reactions,
-      login, register, logout, updateProfile, uploadVideo, deleteVideo,
+      login, register, switchAccount, logout, updateProfile, uploadVideo, deleteVideo,
       addComment, deleteComment, toggleFavorite, toggleSubscription,
       react, addView, toggleTheme, deleteAccount,
     }}>
