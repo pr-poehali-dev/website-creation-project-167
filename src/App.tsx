@@ -14,6 +14,7 @@ import HistoryPage from '@/pages/HistoryPage';
 import SubscriptionsPage from '@/pages/SubscriptionsPage';
 import CatalogPage from '@/pages/CatalogPage';
 import SettingsPage from '@/pages/SettingsPage';
+import PlaylistsPage from '@/pages/PlaylistsPage';
 
 function AppContent() {
   const [page, setPage] = useState('home');
@@ -49,6 +50,8 @@ function AppContent() {
         return <CatalogPage setPage={setPage} setActiveVideo={setActiveVideo} />;
       case 'settings':
         return <SettingsPage setPage={setPage} />;
+      case 'playlists':
+        return <PlaylistsPage setPage={setPage} setActiveVideo={setActiveVideo} />;
       default:
         return <HomePage setPage={setPage} setActiveVideo={setActiveVideo} category={category} setCategory={setCategory} />;
     }

@@ -115,6 +115,7 @@ export default function Navbar({ currentPage, setPage, searchQuery, setSearchQue
                 {/* Menu items */}
                 {[
                   { label: 'Мой канал', page: 'profile', icon: 'User' },
+                  { label: 'Плейлисты', page: 'playlists', icon: 'ListMusic' },
                   { label: 'Загрузить видео', page: 'upload', icon: 'Upload' },
                   { label: 'Настройки', page: 'settings', icon: 'Settings' },
                 ].map(item => (

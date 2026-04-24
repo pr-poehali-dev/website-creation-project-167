@@ -52,6 +52,13 @@ export default function Sidebar({ currentPage, setPage }: SidebarProps) {
               <Icon name="BarChart2" size={17} />
               Мой канал
             </button>
+            <button
+              onClick={() => setPage('playlists')}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full ${currentPage === 'playlists' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+            >
+              <Icon name="ListMusic" size={17} />
+              Плейлисты
+            </button>
           </>
         )}
       </aside>

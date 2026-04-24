@@ -7,7 +7,7 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ setPage }: AuthPageProps) {
-  const { login, register, users, switchAccount } = useAuth();
+  const { login, register, users, switchAccount, forgetAccount } = useAuth();
   const [mode, setMode] = useState<'login' | 'register' | 'switch'>('login');
   const [loginVal, setLoginVal] = useState('');
   const [email, setEmail] = useState('');
@@ -97,10 +97,17 @@ export default function AuthPage({ setPage }: AuthPageProps) {
                           {u.name.charAt(0).toUpperCase()}
                         </div>
                       )}
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm truncate">{u.name}</div>
                         <div className="text-xs text-muted-foreground truncate">@{u.login}</div>
                       </div>
+                      <button
+                        onClick={() => forgetAccount(u.id)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors flex-shrink-0"
+                        title="Убрать аккаунт"
+                      >
+                        <Icon name="X" size={13} />
+                      </button>
                     </div>
                     <div className="flex gap-2">
                       <input

@@ -48,6 +48,11 @@ export default function VideoCard({ video, onClick }: VideoCardProps) {
         <div className="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-[11px] font-medium px-1.5 py-0.5 rounded-md">
           {video.duration || '0:00'}
         </div>
+        {video.ageRestricted && (
+          <div className="absolute top-1.5 left-1.5 bg-destructive text-white text-[10px] font-black px-1.5 py-0.5 rounded-md">
+            18+
+          </div>
+        )}
       </div>
 
       {/* Info */}

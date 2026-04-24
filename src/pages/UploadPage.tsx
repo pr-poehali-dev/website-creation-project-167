@@ -17,23 +17,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function getVideoDuration(file: File): Promise<string> {
-  return new Promise(res => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.src = URL.createObjectURL(file);
-    video.onloadedmetadata = () => {
-      const t = Math.floor(video.duration);
-      const m = Math.floor(t / 60);
-      const s = t % 60;
-      res(`${m}:${s.toString().padStart(2, '0')}`);
-      URL.revokeObjectURL(video.src);
-    };
-    video.onerror = () => res('0:00');
-  });
-}
-
-// Capture a frame at a given time (in seconds) from a video file
 function captureVideoFrame(file: File, timeAt: number): Promise<string> {
   return new Promise(res => {
     const video = document.createElement('video');
@@ -42,18 +25,14 @@ function captureVideoFrame(file: File, timeAt: number): Promise<string> {
     video.preload = 'auto';
     video.muted = true;
     video.currentTime = timeAt;
-    video.onloadeddata = () => {
-      video.currentTime = timeAt;
-    };
+    video.onloadeddata = () => { video.currentTime = timeAt; };
     video.onseeked = () => {
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 360;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      res(dataUrl);
+      res(canvas.toDataURL('image/jpeg', 0.8));
     };
     video.onerror = () => { URL.revokeObjectURL(url); res(''); };
   });
@@ -64,6 +43,7 @@ export default function UploadPage({ setPage }: UploadPageProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Другое');
+  const [ageRestricted, setAgeRestricted] = useState(false);
   const [videoFile, setVideoFile] = useState<string>('');
   const [videoRawFile, setVideoRawFile] = useState<File | null>(null);
   const [thumbFile, setThumbFile] = useState<string>('');
@@ -72,20 +52,12 @@ export default function UploadPage({ setPage }: UploadPageProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-
-  // Frame picker
   const [frames, setFrames] = useState<string[]>([]);
   const [framesLoading, setFramesLoading] = useState(false);
   const [selectedFrame, setSelectedFrame] = useState<number>(-1);
-  const [showFramePicker, setShowFramePicker] = useState(false);
-
-  // Subtitles (SRT file as text)
-  const [subtitleText, setSubtitleText] = useState('');
-  const [subtitleFile, setSubtitleFile] = useState('');
 
   const videoRef = useRef<HTMLInputElement>(null);
   const thumbRef = useRef<HTMLInputElement>(null);
-  const subtitleRef = useRef<HTMLInputElement>(null);
 
   if (!user) return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -100,9 +72,7 @@ export default function UploadPage({ setPage }: UploadPageProps) {
     setLoading(true);
     const base64 = await fileToBase64(file);
     setVideoRawFile(file);
-
-    // get duration
-    const dur = await new Promise<string>(res => {
+    await new Promise<void>(resolve => {
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.src = URL.createObjectURL(file);
@@ -111,27 +81,24 @@ export default function UploadPage({ setPage }: UploadPageProps) {
         setVideoDurationSec(t);
         const m = Math.floor(t / 60);
         const s = t % 60;
-        res(`${m}:${s.toString().padStart(2, '0')}`);
+        setDuration(`${m}:${s.toString().padStart(2, '0')}`);
         URL.revokeObjectURL(video.src);
+        resolve();
       };
-      video.onerror = () => res('0:00');
+      video.onerror = () => { setDuration('0:00'); resolve(); };
     });
-
     setVideoFile(base64);
-    setDuration(dur);
     setLoading(false);
   };
 
   const loadFrames = async () => {
     if (!videoRawFile || videoDurationSec === 0) return;
     setFramesLoading(true);
-    setShowFramePicker(true);
     const count = 6;
     const step = videoDurationSec / (count + 1);
     const captured: string[] = [];
     for (let i = 1; i <= count; i++) {
-      const frame = await captureVideoFrame(videoRawFile, step * i);
-      captured.push(frame);
+      captured.push(await captureVideoFrame(videoRawFile, step * i));
     }
     setFrames(captured);
     setFramesLoading(false);
@@ -140,13 +107,6 @@ export default function UploadPage({ setPage }: UploadPageProps) {
   const selectFrame = (idx: number) => {
     setSelectedFrame(idx);
     setThumbFile(frames[idx]);
-    setShowFramePicker(false);
-  };
-
-  const handleSubtitleFile = async (file: File) => {
-    const text = await file.text();
-    setSubtitleText(file.name);
-    setSubtitleFile(text);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -159,7 +119,7 @@ export default function UploadPage({ setPage }: UploadPageProps) {
       thumbnail: thumbFile,
       duration,
       category,
-      subtitles: subtitleFile || undefined,
+      ageRestricted,
     });
     setSuccess(true);
     setTimeout(() => setPage('home'), 1500);
@@ -230,12 +190,9 @@ export default function UploadPage({ setPage }: UploadPageProps) {
             <Icon name="Image" size={15} className="text-primary" />
             Обложка видео
           </p>
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-3 flex-wrap items-start">
             {/* Upload image */}
-            <div
-              className="flex flex-col items-center gap-1.5 cursor-pointer"
-              onClick={() => thumbRef.current?.click()}
-            >
+            <div className="flex flex-col items-center gap-1 cursor-pointer" onClick={() => thumbRef.current?.click()}>
               <input
                 ref={thumbRef} type="file" accept="image/*" className="hidden"
                 onChange={async e => {
@@ -258,12 +215,9 @@ export default function UploadPage({ setPage }: UploadPageProps) {
               )}
             </div>
 
-            {/* Frame picker */}
+            {/* Frame picker button */}
             {videoFile && (
-              <div
-                className="flex flex-col items-center gap-1.5 cursor-pointer"
-                onClick={loadFrames}
-              >
+              <div className="flex flex-col items-center gap-1 cursor-pointer" onClick={loadFrames}>
                 <div className="w-28 aspect-video rounded-xl bg-secondary border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 transition-colors">
                   {framesLoading ? (
                     <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -279,11 +233,7 @@ export default function UploadPage({ setPage }: UploadPageProps) {
 
             {/* Captured frames */}
             {frames.map((frame, idx) => (
-              <div
-                key={idx}
-                className="relative cursor-pointer"
-                onClick={() => selectFrame(idx)}
-              >
+              <div key={idx} className="relative cursor-pointer" onClick={() => selectFrame(idx)}>
                 <img
                   src={frame}
                   className={`w-28 aspect-video rounded-xl object-cover transition-all
@@ -298,46 +248,6 @@ export default function UploadPage({ setPage }: UploadPageProps) {
               </div>
             ))}
           </div>
-          {showFramePicker && framesLoading && (
-            <p className="text-xs text-muted-foreground mt-2">Захватываем кадры из видео...</p>
-          )}
-        </div>
-
-        {/* Subtitles */}
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Icon name="Captions" size={15} className="text-primary" />
-            Субтитры <span className="text-muted-foreground font-normal text-xs">(необязательно)</span>
-          </p>
-          <input
-            ref={subtitleRef} type="file" accept=".srt,.vtt,.txt" className="hidden"
-            onChange={async e => {
-              const f = e.target.files?.[0];
-              if (f) await handleSubtitleFile(f);
-            }}
-          />
-          {subtitleFile ? (
-            <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2">
-              <Icon name="FileText" size={14} className="text-primary" />
-              <span className="text-xs flex-1 truncate">{subtitleText}</span>
-              <button
-                type="button"
-                onClick={() => { setSubtitleFile(''); setSubtitleText(''); }}
-                className="text-muted-foreground hover:text-destructive transition-colors"
-              >
-                <Icon name="X" size={13} />
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => subtitleRef.current?.click()}
-              className="w-full py-2.5 rounded-xl bg-secondary text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-2"
-            >
-              <Icon name="Upload" size={13} />
-              Загрузить файл субтитров (.srt, .vtt)
-            </button>
-          )}
         </div>
 
         {/* Title */}
@@ -379,6 +289,26 @@ export default function UploadPage({ setPage }: UploadPageProps) {
                 {cat}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Age restriction */}
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <span className="w-6 h-6 rounded-md bg-destructive flex items-center justify-center text-white text-[10px] font-black">18+</span>
+                Ограничение по возрасту
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Видео будет скрыто за предупреждением</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAgeRestricted(a => !a)}
+              className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${ageRestricted ? 'bg-destructive' : 'bg-secondary'}`}
+            >
+              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${ageRestricted ? 'left-6' : 'left-0.5'}`} />
+            </button>
           </div>
         </div>
 

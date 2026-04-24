@@ -26,7 +26,7 @@ export interface Video {
   createdAt: string;
   duration: string;
   category: string;
-  subtitles?: string;
+  ageRestricted?: boolean;
 }
 
 export interface Comment {
@@ -39,11 +39,22 @@ export interface Comment {
   createdAt: string;
 }
 
+export interface Playlist {
+  id: string;
+  authorId: string;
+  title: string;
+  description: string;
+  videoIds: string[];
+  createdAt: string;
+  isPublic: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   users: User[];
   videos: Video[];
   comments: Comment[];
+  playlists: Playlist[];
   theme: 'dark' | 'light';
   history: string[];
   favorites: string[];
@@ -52,6 +63,7 @@ interface AuthContextType {
   login: (loginVal: string, password: string) => boolean;
   register: (loginVal: string, email: string, name: string, password: string) => boolean;
   switchAccount: (userId: string, password: string) => boolean;
+  forgetAccount: (userId: string) => void;
   logout: () => void;
   updateProfile: (data: Partial<User>) => void;
   uploadVideo: (video: Omit<Video, 'id' | 'authorId' | 'authorName' | 'authorAvatar' | 'views' | 'likes' | 'dislikes' | 'createdAt'>) => void;
@@ -64,6 +76,11 @@ interface AuthContextType {
   addView: (videoId: string) => void;
   toggleTheme: () => void;
   deleteAccount: () => void;
+  createPlaylist: (title: string, description: string, isPublic: boolean) => string;
+  deletePlaylist: (id: string) => void;
+  addVideoToPlaylist: (playlistId: string, videoId: string) => void;
+  removeVideoFromPlaylist: (playlistId: string, videoId: string) => void;
+  updatePlaylist: (id: string, data: Partial<Playlist>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -79,7 +96,20 @@ const STORAGE_KEYS = {
   subscriptions: 'yuvist_subscriptions',
   reactions: 'yuvist_reactions',
   passwords: 'yuvist_passwords',
+  playlists: 'yuvist_playlists',
 };
+
+// Цензура плохих слов
+const BAD_WORDS = ['блять', 'блядь', 'хуй', 'пизда', 'пиздец', 'ебать', 'ёбаный', 'ебаный', 'сука', 'мудак', 'пиздить', 'ебло', 'хуйня', 'залупа', 'шлюха', 'курва', 'пиздёж', 'ёбаный', 'бляди', 'хуёво', 'fuck', 'shit', 'bitch', 'asshole', 'cunt', 'nigger', 'faggot'];
+
+export function censorText(text: string): string {
+  let result = text;
+  for (const word of BAD_WORDS) {
+    const regex = new RegExp(word, 'gi');
+    result = result.replace(regex, (match) => match[0] + '*'.repeat(match.length - 1));
+  }
+  return result;
+}
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -96,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [passwords, setPasswords] = useState<Record<string, string>>(() => load(STORAGE_KEYS.passwords, {}));
   const [videos, setVideos] = useState<Video[]>(() => load(STORAGE_KEYS.videos, []));
   const [comments, setComments] = useState<Comment[]>(() => load(STORAGE_KEYS.comments, []));
+  const [playlists, setPlaylists] = useState<Playlist[]>(() => load(STORAGE_KEYS.playlists, []));
   const [user, setUser] = useState<User | null>(() => load(STORAGE_KEYS.currentUser, null));
   const [theme, setTheme] = useState<'dark' | 'light'>(() => load(STORAGE_KEYS.theme, 'dark'));
   const [history, setHistory] = useState<string[]>(() => load(STORAGE_KEYS.history, []));
@@ -112,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { save(STORAGE_KEYS.passwords, passwords); }, [passwords]);
   useEffect(() => { save(STORAGE_KEYS.videos, videos); }, [videos]);
   useEffect(() => { save(STORAGE_KEYS.comments, comments); }, [comments]);
+  useEffect(() => { save(STORAGE_KEYS.playlists, playlists); }, [playlists]);
   useEffect(() => { save(STORAGE_KEYS.currentUser, user); }, [user]);
   useEffect(() => { save(STORAGE_KEYS.history, history); }, [history]);
   useEffect(() => { save(STORAGE_KEYS.favorites, favorites); }, [favorites]);
@@ -154,6 +186,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
+  // Удалить аккаунт из списка сохранённых (не удаляет данные, просто убирает из localStorage)
+  const forgetAccount = (userId: string) => {
+    setUsers(prev => prev.filter(u => u.id !== userId));
+    setPasswords(prev => { const c = { ...prev }; delete c[userId]; return c; });
+    // Удаляем видео и комментарии этого пользователя
+    setVideos(prev => prev.filter(v => v.authorId !== userId));
+    setComments(prev => prev.filter(c => c.authorId !== userId));
+    setPlaylists(prev => prev.filter(p => p.authorId !== userId));
+  };
+
   const logout = () => setUser(null);
 
   const updateProfile = (data: Partial<User>) => {
@@ -192,6 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setComments(prev => prev.filter(c => c.videoId !== id));
     setFavorites(prev => prev.filter(fid => fid !== id));
     setHistory(prev => prev.filter(hid => hid !== id));
+    setPlaylists(prev => prev.map(p => ({ ...p, videoIds: p.videoIds.filter(vid => vid !== id) })));
   };
 
   const addComment = (videoId: string, text: string) => {
@@ -202,7 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authorId: user.id,
       authorName: user.name,
       authorAvatar: user.avatar,
-      text,
+      text: censorText(text),
       createdAt: new Date().toISOString(),
     };
     setComments(prev => [...prev, c]);
@@ -255,6 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     setVideos(prev => prev.filter(v => v.authorId !== user.id));
     setComments(prev => prev.filter(c => c.authorId !== user.id));
+    setPlaylists(prev => prev.filter(p => p.authorId !== user.id));
     setUsers(prev => prev.filter(u => u.id !== user.id));
     setPasswords(prev => { const copy = { ...prev }; delete copy[user.id]; return copy; });
     setUser(null);
@@ -264,12 +308,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setReactions({});
   };
 
+  // Плейлисты
+  const createPlaylist = (title: string, description: string, isPublic: boolean): string => {
+    if (!user) return '';
+    const pl: Playlist = {
+      id: Date.now().toString(),
+      authorId: user.id,
+      title,
+      description,
+      videoIds: [],
+      createdAt: new Date().toISOString(),
+      isPublic,
+    };
+    setPlaylists(prev => [pl, ...prev]);
+    return pl.id;
+  };
+
+  const deletePlaylist = (id: string) => {
+    setPlaylists(prev => prev.filter(p => p.id !== id));
+  };
+
+  const addVideoToPlaylist = (playlistId: string, videoId: string) => {
+    setPlaylists(prev => prev.map(p =>
+      p.id === playlistId && !p.videoIds.includes(videoId)
+        ? { ...p, videoIds: [...p.videoIds, videoId] }
+        : p
+    ));
+  };
+
+  const removeVideoFromPlaylist = (playlistId: string, videoId: string) => {
+    setPlaylists(prev => prev.map(p =>
+      p.id === playlistId
+        ? { ...p, videoIds: p.videoIds.filter(id => id !== videoId) }
+        : p
+    ));
+  };
+
+  const updatePlaylist = (id: string, data: Partial<Playlist>) => {
+    setPlaylists(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+  };
+
   return (
     <AuthContext.Provider value={{
-      user, users, videos, comments, theme, history, favorites, subscriptions, reactions,
-      login, register, switchAccount, logout, updateProfile, uploadVideo, deleteVideo,
+      user, users, videos, comments, playlists, theme, history, favorites, subscriptions, reactions,
+      login, register, switchAccount, forgetAccount, logout, updateProfile, uploadVideo, deleteVideo,
       addComment, deleteComment, toggleFavorite, toggleSubscription,
       react, addView, toggleTheme, deleteAccount,
+      createPlaylist, deletePlaylist, addVideoToPlaylist, removeVideoFromPlaylist, updatePlaylist,
     }}>
       {children}
     </AuthContext.Provider>
